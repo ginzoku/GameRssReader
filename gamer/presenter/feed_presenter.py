@@ -51,6 +51,22 @@ class FeedPresenter:
 
         threading.Thread(target=_run, daemon=True).start()
 
+    def load_feed_sync(self):
+        """Synchronous version of feed loading for tests."""
+        try:
+            self._emit_status('RSS を取得中…', 0)
+            if self.rss_gateway:
+                items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
+            else:
+                from ..adapters.rss_adapter import fetch_rss
+                items = fetch_rss(self.rss_url, headers=self.headers)
+            self._emit_list(items)
+            self._emit_status('RSS を取得しました', 3000)
+            return items
+        except Exception as e:
+            self._emit_status(f'RSS 取得エラー: {e}', 5000)
+            raise
+
     def select(self, index: int):
         try:
             if index < 0:

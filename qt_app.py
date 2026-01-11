@@ -96,8 +96,14 @@ class QtApp(QtWidgets.QMainWindow):
         self.status_message.connect(self.status.showMessage)
         self.list_ready.connect(self.populate_list)
 
-        # Presenter を作成して RSS を読み込む
-        self.presenter = FeedPresenter(self, self.rss_url, headers=HEADERS)
+        # Presenter を作成して RSS を読み込む（RssAdapter を依存注入）
+        try:
+            from gamer.adapters.rss_adapter import RssAdapter
+            rss_adapter = RssAdapter()
+        except Exception:
+            rss_adapter = None
+        self.presenter = FeedPresenter(self, self.rss_url, headers=HEADERS, rss_gateway=rss_adapter)
+        # 非同期ロード
         self.presenter.load_feed()
 
     def load_url(self, url: str):
