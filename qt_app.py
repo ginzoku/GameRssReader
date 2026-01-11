@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWebEngineWidgets import QWebEngineView
+from gamer.presenter.feed_presenter import FeedPresenter
 
 BASE_URL = "https://www.4gamer.net/"
 PC_RSS = "https://www.4gamer.net/rss/pc/pc_news.xml"
@@ -119,8 +120,11 @@ class QtApp(QtWidgets.QMainWindow):
         self.status_message.connect(self.status.showMessage)
         self.list_ready.connect(self.populate_list)
 
-        # 背景でRSS取得
-        threading.Thread(target=self.load_rss, daemon=True).start()
+        # Presenter を初期化して view を接続
+        self.presenter = FeedPresenter()
+        self.presenter.attach_view(self)
+        # 初回ロードは Presenter 経由で行う
+        self.presenter.load_feed()
 
     def load_rss(self):
         try:
@@ -134,7 +138,9 @@ class QtApp(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object)
     def populate_list(self, items):
+        # 保持名は既存のコード互換のため両方設定
         self.items = items
+        self.rss_items = items
         self.list_widget.clear()
         for it in items:
             title = it.get('title')
@@ -148,13 +154,47 @@ class QtApp(QtWidgets.QMainWindow):
             if url:
                 self.web.load(QtCore.QUrl(url))
 
+    # Presenter から呼ばれる互換メソッド
+    def show_list(self, items):
+        # 非同期スレッドから呼ばれる可能性があるためシグナル経由で UI 更新
+        self.list_ready.emit(items)
+
+    def show_article(self, title: str, body: str, url: str):
+        # Presenter は表示のためにこのメソッドを呼ぶ。UI スレッドで処理する。
+        def _do():
+            try:
+                if url:
+                    self.web.load(QtCore.QUrl(url))
+                    self.status_message.emit(f'表示: {url}', 3000)
+                else:
+                    self.status_message.emit(title or '記事表示', 3000)
+            except Exception:
+                pass
+        QtCore.QTimer.singleShot(0, _do)
+
+    def set_status(self, text: str):
+        self.status_message.emit(text, 0)
+
+    def create_browser_embedded(self, url: str) -> bool:
+        # Qt では QWebEngineView を埋め込みとして使う
+        try:
+            self.web.load(QtCore.QUrl(url))
+            return True
+        except Exception:
+            return False
+
     def on_item_activated(self, item):
         idx = self.list_widget.row(item)
         if idx < 0 or idx >= len(self.items):
             return
-        link = self.items[idx].get('link')
-        if link:
-            self.web.load(QtCore.QUrl(link))
+        # Presenter に選択を委譲
+        try:
+            self.presenter.select(idx)
+        except Exception:
+            # 互換フォールバック
+            link = self.items[idx].get('link')
+            if link:
+                self.web.load(QtCore.QUrl(link))
 
     def on_row_changed(self, row: int):
         # 左リストの選択行が変わるたびに呼ばれる
@@ -163,9 +203,12 @@ class QtApp(QtWidgets.QMainWindow):
                 return
             if not hasattr(self, 'items') or row >= len(self.items):
                 return
-            link = self.items[row].get('link')
-            if link:
-                self.web.load(QtCore.QUrl(link))
+            try:
+                self.presenter.select(row)
+            except Exception:
+                link = self.items[row].get('link')
+                if link:
+                    self.web.load(QtCore.QUrl(link))
         except Exception:
             pass
 
