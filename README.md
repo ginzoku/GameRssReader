@@ -24,6 +24,19 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+簡単セットアップスクリプト（Windows）:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.\scripts\setup_windows.ps1
+```
+
+もし `PySide6` を現在の環境に直接入れたい場合:
+
+```powershell
+.\scripts\install_pyside_in_current_env.ps1
+```
+
 実行方法
 - tkinter ベースのメインアプリ（組み込みブラウザはオプション）:
 
