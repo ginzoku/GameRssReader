@@ -63,9 +63,9 @@ class FeedPresenter:
                 try:
                     self.view.load_url(link)
                 except Exception:
-                    # fallback to Qt signal if view implements it
+                    # fallback to view.webview if available
                     try:
-                        self.view.web.load(link)
+                        self.view.webview.load(link)
                     except Exception:
                         pass
         except Exception:

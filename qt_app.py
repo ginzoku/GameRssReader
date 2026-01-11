@@ -77,9 +77,17 @@ class QtApp(QtWidgets.QMainWindow):
         self.list_widget.currentRowChanged.connect(self.on_row_changed)
         h.addWidget(self.list_widget)
 
-        # 右: QWebEngineView
-        self.web = QWebEngineView()
-        h.addWidget(self.web, 1)
+        # 右: QWebEngineView とそのラッパー
+        raw_web = QWebEngineView()
+        h.addWidget(raw_web, 1)
+        try:
+            from gamer.ui.webview import QtWebViewWrapper
+            self.webview = QtWebViewWrapper(raw_web)
+        except Exception:
+            # fallback: expose raw view
+            self.webview = None
+        # keep reference for legacy code paths
+        self.web = raw_web
 
         # ステータスバー
         self.status = self.statusBar()
@@ -94,7 +102,10 @@ class QtApp(QtWidgets.QMainWindow):
 
     def load_url(self, url: str):
         try:
-            self.web.load(QtCore.QUrl(url))
+            if getattr(self, 'webview', None) is not None:
+                self.webview.load(url)
+            else:
+                self.web.load(QtCore.QUrl(url))
         except Exception:
             pass
 
