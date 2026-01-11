@@ -6,6 +6,7 @@
 - RSS フィードの取得と一覧表示（複数ジャンルに対応）
 - 記事本文の要約（サニタイズ済みテキスト）表示
 - 組み込みブラウザ表示（`cefpython3` または `pywebview` を利用、未インストール時はフォールバック）
+ - 組み込みブラウザ表示（最終レンダラ: Qt の `QWebEngineView` を使用。CEF/pywebview は非推奨）
 - Qt ベースの別アプリケーション（`qt_app.py`）を含む
 
 対応プラットフォーム
@@ -15,6 +16,7 @@
 - Python 3.8 以上
 - 必須パッケージ: `requests`, `beautifulsoup4`
 - オプション（機能に応じて）: `cefpython3`（埋め込みCEF）、`pywebview`（埋め込みWebViewの代替）、`PySide6`（`qt_app.py` を実行する場合）
+ - オプション（機能に応じて）: `PySide6`（`qt_app.py` を実行する場合）。`cefpython3` や `pywebview` は現在の推奨経路ではありません。
 
 セットアップ（PowerShell）
 
@@ -52,9 +54,7 @@ python qt_app.py
 
 - 単純に URL を pywebview で開くヘルパー:
 
-```powershell
-python open_webview.py https://www.4gamer.net/...
-```
+（組み込みレンダラは `QWebEngineView` に統一されたため、`open_webview.py` は外部ブラウザ起動などの補助用途にとどめます。）
 
 補足
 - `main.py` は優先的に RSS（既定: `https://www.4gamer.net/rss/pc/pc_news.xml`）を取得して左側リストに反映します。RSS が取得できない場合はサイトのホームページから候補リンクをスクレイピングしてフォールバックします。
