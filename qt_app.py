@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWebEngineWidgets import QWebEngineView
+from gamer.presenter.feed_presenter import FeedPresenter
 
 BASE_URL = "https://www.4gamer.net/"
 PC_RSS = "https://www.4gamer.net/rss/pc/pc_news.xml"
@@ -32,39 +33,7 @@ GENRES = {
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 
 
-def fetch_rss(url=RSS_URL):
-    resp = requests.get(url, headers=HEADERS, timeout=10)
-    resp.raise_for_status()
-    items = []
-    try:
-        root = ET.fromstring(resp.content)
-    except ET.ParseError:
-        return items
-
-    def find_local_text(elem, name):
-        for child in elem:
-            tag = child.tag
-            if '}' in tag:
-                local = tag.rsplit('}', 1)[1]
-            else:
-                local = tag
-            if local == name:
-                return child.text or ''
-        return ''
-
-    for elem in root.iter():
-        tag = elem.tag
-        local = tag.rsplit('}', 1)[1] if '}' in tag else tag
-        if local.lower() == 'item':
-            title = (find_local_text(elem, 'title') or '').strip() or "(タイトル取得できず)"
-            link = (find_local_text(elem, 'link') or '').strip()
-            pubdate = (find_local_text(elem, 'pubDate') or '').strip()
-            desc_raw = (find_local_text(elem, 'description') or '').strip()
-            desc = ''
-            if desc_raw:
-                desc = BeautifulSoup(desc_raw, 'html.parser').get_text(' ', strip=True)
-            items.append({'title': title, 'link': link, 'pubDate': pubdate, 'description': desc})
-    return items
+# RSS は presenter に委譲します
 
 
 class QtApp(QtWidgets.QMainWindow):
@@ -119,18 +88,28 @@ class QtApp(QtWidgets.QMainWindow):
         self.status_message.connect(self.status.showMessage)
         self.list_ready.connect(self.populate_list)
 
-        # 背景でRSS取得
-        threading.Thread(target=self.load_rss, daemon=True).start()
+        # Presenter を作成して RSS を読み込む
+        self.presenter = FeedPresenter(self, self.rss_url, headers=HEADERS)
+        self.presenter.load_feed()
 
-    def load_rss(self):
+    def load_url(self, url: str):
         try:
-            # UI はシグナル経由で更新
-            self.status_message.emit('RSS を取得中…', 0)
-            items = fetch_rss(self.rss_url)
+            self.web.load(QtCore.QUrl(url))
+        except Exception:
+            pass
+
+    # Implement ViewPort methods so presenter can call them directly
+    def show_status(self, message: str, timeout_ms: int = 0) -> None:
+        try:
+            self.status_message.emit(message, timeout_ms)
+        except Exception:
+            pass
+
+    def show_list(self, items) -> None:
+        try:
             self.list_ready.emit(items)
-            self.status_message.emit('RSS を取得しました', 3000)
-        except Exception as e:
-            self.status_message.emit(f'RSS 取得エラー: {e}', 5000)
+        except Exception:
+            pass
 
     @QtCore.Slot(object)
     def populate_list(self, items):
@@ -150,11 +129,7 @@ class QtApp(QtWidgets.QMainWindow):
 
     def on_item_activated(self, item):
         idx = self.list_widget.row(item)
-        if idx < 0 or idx >= len(self.items):
-            return
-        link = self.items[idx].get('link')
-        if link:
-            self.web.load(QtCore.QUrl(link))
+        self.presenter.select(idx)
 
     def on_row_changed(self, row: int):
         # 左リストの選択行が変わるたびに呼ばれる
@@ -163,9 +138,7 @@ class QtApp(QtWidgets.QMainWindow):
                 return
             if not hasattr(self, 'items') or row >= len(self.items):
                 return
-            link = self.items[row].get('link')
-            if link:
-                self.web.load(QtCore.QUrl(link))
+            self.presenter.select(row)
         except Exception:
             pass
 
@@ -184,8 +157,9 @@ class QtApp(QtWidgets.QMainWindow):
                 # unknown -> PC にフォールバック
                 self.rss_url = PC_RSS
                 self.status_message.emit('ジャンル: PC に切替え (既定)', 2000)
-            # 再取得
-            threading.Thread(target=self.load_rss, daemon=True).start()
+            # 再取得 via presenter
+            self.presenter.rss_url = self.rss_url
+            self.presenter.load_feed()
         except Exception:
             pass
 

@@ -70,6 +70,15 @@ python qt_app.py
 	- `qt_app.py`: PySide6（QtWebEngine）を使った別 GUI 実装（ジャンル選択あり）
 	- `open_webview.py`: `pywebview` で渡した URL を表示する簡易ランチャー
 
+アーキテクチャ
+- 本プロジェクトはクリーンアーキテクチャを採用しています。主要層は以下です。
+	- `gamer.domain`: ドメインモデル（`Article` など）
+	- `gamer.adapters`: 外部との接続（HTTP、RSS 解析など）
+	- `gamer.presenter`: プレゼンター（UI とユースケースの仲介）
+	- `gamer.ui`: UI 実装（`qt_app.py` が UI に相当）
+
+現在、`qt_app.py` は `gamer.presenter.FeedPresenter` を使って RSS の取得と UI 更新を行います。UI はプレゼンター経由でドメイン/アダプタに依存せず動作します。
+
 ライセンス
 - 個人利用・教育目的での利用を想定しています。配布や商用利用を行う場合は各記事の著作権に注意してください。
 
