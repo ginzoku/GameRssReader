@@ -206,7 +206,9 @@ class App:
 
     def create_browser_embedded(self, url="about:blank"):
         # CEF browser を右枠内に埋め込む
+        print("[App] create_browser_embedded called, CEF_AVAILABLE=", CEF_AVAILABLE)
         if not CEF_AVAILABLE:
+            print("[App] CEF not available, skipping create_browser_embedded")
             return
         if self.browser:
             try:
@@ -226,6 +228,7 @@ class App:
             # fallback if signature differs
             window_info.SetAsChild(hwnd)
         self.browser = cef.CreateBrowserSync(window_info=window_info, url=url)
+        print("[App] CEF CreateBrowserSync called, browser set")
 
     # --- pywebview 子ウィンドウ化用ヘルパー (Windows) ---
     def _start_pywebview_thread(self, url):
@@ -253,23 +256,28 @@ class App:
 
     def embed_pywebview_into_frame(self, url):
         # Try to start pywebview in a background thread and SetParent to right_frame
+        print("[App] embed_pywebview_into_frame called, webview module:", 'present' if webview is not None else 'missing')
         if webview is None:
+            print("[App] pywebview not installed; cannot embed");
             return False
         # If already started, just load URL
         try:
             if self.pw_window:
                 try:
+                    print("[App] pywebview window already exists, loading url")
                     self.pw_window.load_url(url)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print("[App] pywebview load_url failed:", e)
                 return True
-        except Exception:
+        except Exception as e:
+            print("[App] error checking existing pw_window:", e)
             pass
 
         # Start pywebview in a thread
         self.pw_thread = threading.Thread(target=self._start_pywebview_thread, args=(url,), daemon=True)
         self.pw_thread.start()
 
+        print("[App] waiting for pywebview window handle...")
         # Poll for window handle
         HWND = None
         for _ in range(400):
@@ -298,12 +306,14 @@ class App:
                         break
                     time.sleep(0.05)
             except Exception:
+                print("[App] win32gui search failed or not available")
                 pass
 
         if not HWND:
+            print("[App] no HWND found for pywebview")
             return False
 
-        # Parent it to the right_frame
+            # Parent it to the right_frame
         try:
             parent_hwnd = self.right_frame.winfo_id()
             user32 = ctypes.windll.user32
@@ -340,6 +350,7 @@ class App:
                 pass
             # store handle for resize updates
             self._pw_hwnd = HWND
+            print(f"[App] pywebview embedded HWND={HWND} parent={parent_hwnd}")
             return True
         except Exception:
             # cleanup userdir if created
