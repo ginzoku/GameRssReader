@@ -140,28 +140,71 @@ class QtApp(QtWidgets.QMainWindow):
                     self._font.setBold(True)
                     self._font.setPointSize(12)
 
+
                 def paint(self, painter, option, index):
-                    painter.save()
-                    text = index.data(QtCore.Qt.DisplayRole) or ''
-                    # background for selection
-                    if option.state & QtWidgets.QStyle.State_Selected:
-                        painter.fillRect(option.rect, QtGui.QColor('#133044'))
-                        pen_color = QtGui.QColor('#ffffff')
-                    else:
-                        # draw non-selected items in white for better contrast
-                        pen_color = QtGui.QColor('#ffffff')
-                    painter.setPen(pen_color)
-                    painter.setFont(self._font)
-                    doc = QtGui.QTextDocument()
-                    to = doc.defaultTextOption()
-                    to.setWrapMode(QtGui.QTextOption.WordWrap)
-                    doc.setDefaultTextOption(to)
-                    doc.setDefaultFont(self._font)
-                    doc.setPlainText(text)
-                    doc.setTextWidth(max(50, option.rect.width() - self.padding * 2))
-                    painter.translate(option.rect.left() + self.padding, option.rect.top() + self.padding)
-                    doc.drawContents(painter)
-                    painter.restore()
+                        painter.save()
+
+                        # スタイルオプションを初期化（背景・選択状態などを正しく扱う）
+                        style = option.widget.style() if option.widget else QtWidgets.QApplication.style()
+                        style.drawControl(QtWidgets.QStyle.CE_ItemViewItem, option, painter)  # 背景・選択ハイライトを描画
+
+                        text = index.data(QtCore.Qt.DisplayRole) or ''
+
+                        if not text:
+                            painter.restore()
+                            return
+
+                        # テキスト領域を padding 分縮小
+                        text_rect = option.rect.adjusted(
+                            self.padding, self.padding,
+                            -self.padding, -self.padding
+                        )
+
+                        if text_rect.isEmpty():
+                            painter.restore()
+                            return
+
+                        # QTextDocument 作成
+                        doc = QtGui.QTextDocument()
+                        doc.setDefaultFont(self._font)
+
+                        option_text = QtGui.QTextOption()
+                        option_text.setWrapMode(QtGui.QTextOption.WordWrap)
+                        # option_text.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)  # 必要なら
+                        doc.setDefaultTextOption(option_text)
+
+                        doc.setPlainText(text)
+                        doc.setTextWidth(max(
+                                50, option.rect.width() - self.padding * 2
+                            )
+                        )
+
+
+                        # ここが重要！ PaintContext を使って色とクリッピングを正しく制御
+                        # あとListWidgetItemのSetForeGround()も効かない(そもそも今paint()をオーバーライドしてるから無視される)
+                        ctx = QtGui.QAbstractTextDocumentLayout.PaintContext()
+
+                        # 選択状態か通常かで色を決める
+                        if option.state & QtWidgets.QStyle.State_Selected:
+                            painter.fillRect(option.rect, QtGui.QColor('#133044'))
+                            ctx.palette.setColor(QtGui.QPalette.Text, QtGui.QColor('#ffffff'))
+                            ctx.palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor('#ffffff'))
+                        else:
+                            ctx.palette.setColor(QtGui.QPalette.Text, QtGui.QColor('#ffffff'))
+
+                        # クリッピングを設定（アイテム矩形内に収める）
+                        ctx.clip = QtCore.QRectF(0, 0, text_rect.width(), text_rect.height())
+
+                        # translate で移動してから描画
+                        painter.translate(
+                            option.rect.left() + self.padding,
+                            option.rect.top() + self.padding
+                        )
+
+                        # drawContents() ではなく documentLayout().draw を使う（これが安定）
+                        doc.documentLayout().draw(painter, ctx)
+
+                        painter.restore()
 
                 def sizeHint(self, option, index):
                     text = index.data(QtCore.Qt.DisplayRole) or ''
