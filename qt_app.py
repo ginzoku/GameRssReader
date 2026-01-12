@@ -32,6 +32,13 @@ GENRES = {
 }
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 
+# アーカイブ（キーワードベースの簡易フィルタ）
+ARCHIVES = [
+    'すべて表示',
+    'ローグライト',
+    'ローグライク',
+]
+
 
 # RSS は presenter に委譲します
 
@@ -68,6 +75,18 @@ class QtApp(QtWidgets.QMainWindow):
             genre_menu.addAction(act)
             act.triggered.connect(lambda checked, n=name: self.change_genre(n))
             self.genre_actions[name] = act
+
+        # アーカイブメニュー（キーワードで現在のリストをフィルタ）
+        archive_menu = menubar.addMenu('アーカイブ')
+        self.archive_actions = {}
+        for key in ARCHIVES:
+            try:
+                a = QtWidgets.QAction(key, self)
+            except Exception:
+                a = QtGui.QAction(key, self)
+            archive_menu.addAction(a)
+            a.triggered.connect(lambda checked, k=key: self.change_archive(k))
+            self.archive_actions[key] = a
 
         # 左: リスト
         self.list_widget = QtWidgets.QListWidget()
@@ -132,6 +151,11 @@ class QtApp(QtWidgets.QMainWindow):
     def populate_list(self, items):
         self.items = items
         self.list_widget.clear()
+        # apply pending archive filter if any
+        if getattr(self, '_pending_archive', None):
+            items = self._apply_archive_filter(self._pending_archive, items)
+            # clear pending
+            self._pending_archive = None
         for it in items:
             title = it.get('title')
             pub = it.get('pubDate')
@@ -179,6 +203,44 @@ class QtApp(QtWidgets.QMainWindow):
             self.presenter.load_feed()
         except Exception:
             pass
+
+    def change_archive(self, which: str):
+        """Handle archive menu selection: filter current items by keyword."""
+        try:
+            if which == 'すべて表示':
+                # show all
+                if hasattr(self, 'items'):
+                    self.populate_list(self.items)
+                else:
+                    # no items yet, clear pending
+                    self._pending_archive = None
+                self.status_message.emit('アーカイブ: すべて表示', 2000)
+                return
+            # filter by keyword
+            if not hasattr(self, 'items'):
+                # items not loaded yet; apply after load
+                self._pending_archive = which
+                self.status_message.emit(f'アーカイブ: {which} を適用します (読み込み後)', 2000)
+                # ensure feed is loaded
+                self.presenter.load_feed()
+                return
+            filtered = self._apply_archive_filter(which, self.items)
+            self.populate_list(filtered)
+            self.status_message.emit(f'アーカイブ: {which} を適用しました', 2000)
+        except Exception:
+            pass
+
+    def _apply_archive_filter(self, keyword: str, items):
+        if not keyword:
+            return items
+        out = []
+        for it in items:
+            title = (it.get('title') or '').lower()
+            desc = (it.get('description') or '')
+            text = f"{title} {desc}".lower()
+            if keyword.lower() in text:
+                out.append(it)
+        return out
 
 
 def main():
