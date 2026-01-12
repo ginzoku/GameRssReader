@@ -148,7 +148,8 @@ class QtApp(QtWidgets.QMainWindow):
                         painter.fillRect(option.rect, QtGui.QColor('#133044'))
                         pen_color = QtGui.QColor('#ffffff')
                     else:
-                        pen_color = QtGui.QColor('#e6eef6')
+                        # draw non-selected items in white for better contrast
+                        pen_color = QtGui.QColor('#ffffff')
                     painter.setPen(pen_color)
                     painter.setFont(self._font)
                     doc = QtGui.QTextDocument()
@@ -283,58 +284,24 @@ class QtApp(QtWidgets.QMainWindow):
             title = it.get('title')
             pub = it.get('pubDate')
             txt = f"{pub} - {title}" if pub else title
-            # use a QLabel inside the QListWidget so long titles wrap inside the list width
-            item = QtWidgets.QListWidgetItem()
-            label = QtWidgets.QLabel(txt)
-            label.setWordWrap(True)
-            # use contents margins for reliable spacing on all platforms
+            # Quick fallback: add plain QListWidgetItem so text is always visible
             try:
-                # give extra bottom margin to avoid clipping of last line
-                label.setContentsMargins(4, 4, 4, 8)
-            except Exception:
+                item = QtWidgets.QListWidgetItem(str(txt or ''))
                 try:
-                    label.setMargin(6)
+                    fnt = item.font()
+                    fnt.setBold(True)
+                    fnt.setPointSize(12)
+                    item.setFont(fnt)
                 except Exception:
                     pass
-            try:
-                label.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-            except Exception:
-                pass
-            label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            # let clicks pass through to QListWidget so item selection still works
-            try:
-                label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
-            except Exception:
-                pass
-            # make list text white and bold for better contrast in dark theme
-            try:
-                label.setStyleSheet('color: #ffffff; font-weight: 600; font-size: 13px;')
-            except Exception:
                 try:
-                    f = label.font()
-                    f.setBold(True)
-                    f.setPointSize(12)
-                    label.setFont(f)
+                    item.setForeground(QtGui.QColor('#ffffff'))
                 except Exception:
                     pass
-            try:
-                preferred = self.list_widget.maximumWidth() or self.list_widget.width() or 360
-                label.setFixedWidth(max(120, preferred - 24))
+                self.list_widget.addItem(item)
             except Exception:
+                # if adding as item fails, skip gracefully
                 pass
-            label.adjustSize()
-            try:
-                sz = label.sizeHint()
-                # add small vertical padding to avoid clipping of last line
-                try:
-                    sz.setHeight(sz.height() + 2)
-                except Exception:
-                    pass
-                item.setSizeHint(sz)
-            except Exception:
-                item.setSizeHint(label.sizeHint())
-            self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, label)
         # try to process pending events so layout/viewport sizes are up-to-date,
         # then update item widths; fallback to scheduling if immediate update fails
         try:
