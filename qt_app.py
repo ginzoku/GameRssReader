@@ -127,7 +127,8 @@ class QtApp(QtWidgets.QMainWindow):
         # 左: リスト
         self.list_widget = QtWidgets.QListWidget()
         self.list_widget.setMaximumWidth(380)
-        self.list_widget.setUniformItemSizes(True)
+        # allow per-item heights provided by the delegate/sizeHint
+        self.list_widget.setUniformItemSizes(False)
         self.list_widget.setSpacing(2)
         self.list_widget.itemActivated.connect(self.on_item_activated)
         self.list_widget.currentRowChanged.connect(self.on_row_changed)
@@ -357,6 +358,10 @@ class QtApp(QtWidgets.QMainWindow):
             except Exception:
                 pass
             self._update_list_item_widths()
+            try:
+                self.list_widget.updateGeometries()
+            except Exception:
+                pass
         except Exception:
             try:
                 QtCore.QTimer.singleShot(0, self._update_list_item_widths)
