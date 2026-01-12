@@ -20,6 +20,11 @@ class QtWebViewWrapper(WebViewPort):
             self.view.loadFinished.connect(self._on_load_finished)
         except Exception:
             pass
+        # ensure empty state uses black background
+        try:
+            self.clear()
+        except Exception:
+            pass
 
     def load(self, url: str) -> None:
         try:
@@ -56,7 +61,17 @@ class QtWebViewWrapper(WebViewPort):
 
     def clear(self) -> None:
         try:
-            # navigate to about:blank
+            # show an explicit black page instead of default white about:blank
+            html = '<!doctype html><html><head><meta charset="utf-8"></head>' \
+                   '<body style="background:#000000;margin:0;height:100%;"></body></html>'
+            page = self.view.page()
+            # prefer setHtml so background is immediately black
+            try:
+                page.setHtml(html, QtCore.QUrl('about:blank'))
+                return
+            except Exception:
+                pass
+            # fallback to loading about:blank if setHtml not available
             self.view.load(QtCore.QUrl("about:blank"))
         except Exception:
             pass
