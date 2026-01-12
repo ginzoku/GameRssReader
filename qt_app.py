@@ -1,9 +1,6 @@
 import sys
 import threading
-import urllib.parse
-import requests
-import xml.etree.ElementTree as ET
-from bs4 import BeautifulSoup
+from typing import Optional
 
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -40,9 +37,6 @@ ARCHIVES = [
 ]
 
 
-# RSS は presenter に委譲します
-
-
 class QtApp(QtWidgets.QMainWindow):
     status_message = QtCore.Signal(str, int)
     list_ready = QtCore.Signal(object)
@@ -50,8 +44,50 @@ class QtApp(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('4Gamer - QtWebEngine ビュー')
-        self.resize(900, 640)
+        self.resize(1000, 700)
         self.rss_url = RSS_URL
+
+        # stylesheets (light + dark) and current theme helper
+        self._light_stylesheet = '''
+            QMainWindow { background: #f6f7fb; }
+            QListWidget { background: white; border: 1px solid #e1e4ea; }
+            QToolBar { background: transparent; spacing: 6px; }
+            QMenuBar { background: transparent; }
+            QStatusBar { background: transparent; }
+        '''
+        self._dark_stylesheet = '''
+            QMainWindow { background: #0b0f14; color: #e6eef6; }
+            QMenuBar { background: transparent; color: #e6eef6; }
+            QMenu { background: #0b0f14; color: #e6eef6; border: 1px solid #162028; }
+            QToolBar { background: transparent; spacing: 8px; padding: 6px; }
+            QToolButton { color: #e6eef6; background: transparent; border-radius: 6px; padding: 6px; }
+            QToolButton:hover { background: #16202a; }
+            QListWidget { 
+                background: #071018; 
+                color: #e6eef6; 
+                border: 1px solid #0f1a22; 
+                padding: 6px; 
+                border-radius: 8px;
+            }
+            QListWidget::item { 
+                border-radius: 6px; 
+                padding: 6px 4px; 
+                margin: 2px 0; 
+            }
+            QListWidget::item:selected { 
+                background: #133044; 
+                color: #ffffff; 
+            }
+            QStatusBar { background: transparent; color: #9fb3c8; }
+            QScrollBar:vertical { background: transparent; width: 10px; margin: 12px 0 12px 0; }
+            QScrollBar::handle:vertical { background: #12303d; min-height: 20px; border-radius: 4px; }
+            QSplitter::handle { background: transparent; }
+        '''
+        try:
+            # default to dark theme
+            self.setStyleSheet(self._dark_stylesheet)
+        except Exception:
+            pass
 
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
@@ -63,13 +99,11 @@ class QtApp(QtWidgets.QMainWindow):
         # QActionGroup が環境で利用できない場合もあるため、手動でチェック管理する
         self.genre_actions = {}
         for name, url in GENRES.items():
-            # QAction may live in QtGui in some PySide6 builds
             try:
                 act = QtWidgets.QAction(name, self)
             except Exception:
                 act = QtGui.QAction(name, self)
             act.setCheckable(True)
-            # 初期選択を反映
             if GENRES.get(name) == self.rss_url:
                 act.setChecked(True)
             genre_menu.addAction(act)
@@ -91,25 +125,49 @@ class QtApp(QtWidgets.QMainWindow):
         # 左: リスト
         self.list_widget = QtWidgets.QListWidget()
         self.list_widget.setMaximumWidth(380)
+        self.list_widget.setUniformItemSizes(True)
+        self.list_widget.setSpacing(2)
         self.list_widget.itemActivated.connect(self.on_item_activated)
-        # 選択が変わるたびに右側の Web 表示を更新
         self.list_widget.currentRowChanged.connect(self.on_row_changed)
-        h.addWidget(self.list_widget)
 
         # 右: QWebEngineView とそのラッパー
         raw_web = QWebEngineView()
-        h.addWidget(raw_web, 1)
+        # use a splitter for modern resizable panes
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        splitter.addWidget(self.list_widget)
+        splitter.addWidget(raw_web)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([300, 700])
+        h.addWidget(splitter)
         try:
             from gamer.ui.webview import QtWebViewWrapper
             self.webview = QtWebViewWrapper(raw_web)
         except Exception:
-            # fallback: expose raw view
             self.webview = None
-        # keep reference for legacy code paths
         self.web = raw_web
 
         # ステータスバー
         self.status = self.statusBar()
+
+        # ツールバー（リフレッシュ、外部で開く、ダーク切替）
+        try:
+            toolbar = self.addToolBar('Main')
+            refresh_act = QtWidgets.QAction('更新', self)
+            refresh_act.triggered.connect(lambda: self.presenter.load_feed())
+            toolbar.addAction(refresh_act)
+            open_act = QtWidgets.QAction('外部で開く', self)
+            open_act.triggered.connect(self._open_in_external)
+            toolbar.addAction(open_act)
+            dark_act = QtWidgets.QAction('ダーク', self)
+            dark_act.setCheckable(True)
+            dark_act.triggered.connect(lambda checked: self._apply_theme(checked))
+            toolbar.addAction(dark_act)
+            try:
+                dark_act.setChecked(True)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
         # シグナル接続
         self.status_message.connect(self.status.showMessage)
@@ -125,6 +183,8 @@ class QtApp(QtWidgets.QMainWindow):
         # 非同期ロード
         self.presenter.load_feed()
 
+        # no fade helpers (direct navigation)
+
     def load_url(self, url: str):
         try:
             if getattr(self, 'webview', None) is not None:
@@ -133,6 +193,8 @@ class QtApp(QtWidgets.QMainWindow):
                 self.web.load(QtCore.QUrl(url))
         except Exception:
             pass
+
+    
 
     # Implement ViewPort methods so presenter can call them directly
     def show_status(self, message: str, timeout_ms: int = 0) -> None:
@@ -160,20 +222,149 @@ class QtApp(QtWidgets.QMainWindow):
             title = it.get('title')
             pub = it.get('pubDate')
             txt = f"{pub} - {title}" if pub else title
-            self.list_widget.addItem(txt)
-        if items:
-            # 最初の項目を自動で表示
-            first = items[0]
-            url = first.get('link')
-            if url:
-                self.web.load(QtCore.QUrl(url))
+            # use a QLabel inside the QListWidget so long titles wrap inside the list width
+            item = QtWidgets.QListWidgetItem()
+            label = QtWidgets.QLabel(txt)
+            label.setWordWrap(True)
+            # use contents margins for reliable spacing on all platforms
+            try:
+                # give extra bottom margin to avoid clipping of last line
+                label.setContentsMargins(4, 4, 4, 8)
+            except Exception:
+                try:
+                    label.setMargin(6)
+                except Exception:
+                    pass
+            try:
+                label.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+            except Exception:
+                pass
+            label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            # let clicks pass through to QListWidget so item selection still works
+            try:
+                label.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+            except Exception:
+                pass
+            # make list text white and bold for better contrast in dark theme
+            try:
+                label.setStyleSheet('color: #ffffff; font-weight: 600; font-size: 13px;')
+            except Exception:
+                try:
+                    f = label.font()
+                    f.setBold(True)
+                    f.setPointSize(12)
+                    label.setFont(f)
+                except Exception:
+                    pass
+            try:
+                preferred = self.list_widget.maximumWidth() or self.list_widget.width() or 360
+                label.setFixedWidth(max(120, preferred - 24))
+            except Exception:
+                pass
+            label.adjustSize()
+            try:
+                sz = label.sizeHint()
+                # add small vertical padding to avoid clipping of last line
+                try:
+                    sz.setHeight(sz.height() + 2)
+                except Exception:
+                    pass
+                item.setSizeHint(sz)
+            except Exception:
+                item.setSizeHint(label.sizeHint())
+            self.list_widget.addItem(item)
+            self.list_widget.setItemWidget(item, label)
+        # try to process pending events so layout/viewport sizes are up-to-date,
+        # then update item widths; fallback to scheduling if immediate update fails
+        try:
+            try:
+                QtWidgets.QApplication.processEvents()
+            except Exception:
+                pass
+            self._update_list_item_widths()
+        except Exception:
+            try:
+                QtCore.QTimer.singleShot(0, self._update_list_item_widths)
+            except Exception:
+                pass
+
+    def resizeEvent(self, event):
+        try:
+            super().resizeEvent(event)
+        except Exception:
+            pass
+        try:
+            self._update_list_item_widths()
+        except Exception:
+            pass
+
+    def _update_list_item_widths(self):
+        vw = 0
+        try:
+            vw = self.list_widget.viewport().width()
+        except Exception:
+            return
+        target_width = max(80, vw - 24)
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget is None:
+                continue
+            try:
+                widget.setFixedWidth(target_width)
+                # force layout recalculation on the label
+                try:
+                    widget.adjustSize()
+                except Exception:
+                    pass
+                sz = widget.sizeHint()
+                # add larger vertical padding to ensure no clipping occurs
+                try:
+                    sz.setHeight(sz.height() + 8)
+                except Exception:
+                    pass
+                item.setSizeHint(sz)
+            except Exception:
+                pass
+        try:
+            # ensure the list updates its geometry and repaints
+            try:
+                self.list_widget.updateGeometries()
+            except Exception:
+                pass
+            try:
+                self.list_widget.viewport().update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _open_in_external(self):
+        try:
+            row = self.list_widget.currentRow()
+            if row < 0:
+                return
+            url = self.items[row].get('link')
+            if not url:
+                return
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        except Exception:
+            pass
+
+    def _apply_theme(self, dark: bool):
+        try:
+            if dark:
+                self.setStyleSheet(self._dark_stylesheet)
+            else:
+                self.setStyleSheet(self._light_stylesheet)
+        except Exception:
+            pass
 
     def on_item_activated(self, item):
         idx = self.list_widget.row(item)
         self.presenter.select(idx)
 
     def on_row_changed(self, row: int):
-        # 左リストの選択行が変わるたびに呼ばれる
         try:
             if row < 0:
                 return
@@ -187,7 +378,6 @@ class QtApp(QtWidgets.QMainWindow):
         try:
             if which in GENRES:
                 self.rss_url = GENRES[which]
-                # チェック状態を更新
                 for n, a in getattr(self, 'genre_actions', {}).items():
                     try:
                         a.setChecked(n == which)
@@ -195,33 +385,25 @@ class QtApp(QtWidgets.QMainWindow):
                         pass
                 self.status_message.emit(f'ジャンル: {which} に切替え', 2000)
             else:
-                # unknown -> PC にフォールバック
                 self.rss_url = PC_RSS
                 self.status_message.emit('ジャンル: PC に切替え (既定)', 2000)
-            # 再取得 via presenter
             self.presenter.rss_url = self.rss_url
             self.presenter.load_feed()
         except Exception:
             pass
 
     def change_archive(self, which: str):
-        """Handle archive menu selection: filter current items by keyword."""
         try:
             if which == 'すべて表示':
-                # show all
                 if hasattr(self, 'items'):
                     self.populate_list(self.items)
                 else:
-                    # no items yet, clear pending
                     self._pending_archive = None
                 self.status_message.emit('アーカイブ: すべて表示', 2000)
                 return
-            # filter by keyword
             if not hasattr(self, 'items'):
-                # items not loaded yet; apply after load
                 self._pending_archive = which
                 self.status_message.emit(f'アーカイブ: {which} を適用します (読み込み後)', 2000)
-                # ensure feed is loaded
                 self.presenter.load_feed()
                 return
             filtered = self._apply_archive_filter(which, self.items)
