@@ -27,6 +27,7 @@ GENRES = {
     'アーケード': 'https://www.4gamer.net/rss/arcade/arcade_news.xml',
     'アナログ': 'https://www.4gamer.net/tags/TS/TS020/contents.xml',
     'VR': 'https://www.4gamer.net/rss/vr/vr_news.xml',
+    '雑多(GameSpark)': 'https://www.gamespark.jp/rss/index.rdf',
 }
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 
@@ -202,6 +203,8 @@ class QtApp(QtWidgets.QMainWindow):
                         )
 
                         # drawContents() ではなく documentLayout().draw を使う（これが安定）
+                        # PaintContext.paletteだけ確認してる作りっぽいのでsetPen()も無意味
+                        # なのでctx.paletteで色を指定してそれを使用する以下の方法が必須
                         doc.documentLayout().draw(painter, ctx)
 
                         painter.restore()
@@ -302,6 +305,7 @@ class QtApp(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+        
     def show_status(self, message: str, timeout_ms: int = 0) -> None:
         try:
             self.status_message.emit(message, timeout_ms)

@@ -28,6 +28,16 @@ class QtWebViewWrapper(WebViewPort):
 
     def load(self, url: str) -> None:
         try:
+            # disable automatic horizontal centering for GameSpark (their layout)
+            try:
+                u = str(url or '')
+            except Exception:
+                u = ''
+            if 'gamespark.jp' in u:
+                self._center_horizontal = False
+            else:
+                # preserve default unless explicitly disabled elsewhere
+                self._center_horizontal = True
             self.view.load(QtCore.QUrl(url))
         except Exception:
             # swallow to keep presenter resilient
