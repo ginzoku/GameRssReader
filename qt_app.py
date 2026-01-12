@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from gamer.presenter.feed_presenter import FeedPresenter
+from gamer.ui.webview import QtWebViewWrapper
 
 BASE_URL = "https://www.4gamer.net/"
 PC_RSS = "https://www.4gamer.net/rss/pc/pc_news.xml"
@@ -129,6 +130,58 @@ class QtApp(QtWidgets.QMainWindow):
         self.list_widget.setSpacing(2)
         self.list_widget.itemActivated.connect(self.on_item_activated)
         self.list_widget.currentRowChanged.connect(self.on_row_changed)
+        # use custom delegate to draw wrapped, bold, white titles and control height
+        try:
+            class ArticleDelegate(QtWidgets.QStyledItemDelegate):
+                def __init__(self, parent=None):
+                    super().__init__(parent)
+                    self.padding = 8
+                    self._font = QtGui.QFont()
+                    self._font.setBold(True)
+                    self._font.setPointSize(12)
+
+                def paint(self, painter, option, index):
+                    painter.save()
+                    text = index.data(QtCore.Qt.DisplayRole) or ''
+                    # background for selection
+                    if option.state & QtWidgets.QStyle.State_Selected:
+                        painter.fillRect(option.rect, QtGui.QColor('#133044'))
+                        pen_color = QtGui.QColor('#ffffff')
+                    else:
+                        pen_color = QtGui.QColor('#e6eef6')
+                    painter.setPen(pen_color)
+                    painter.setFont(self._font)
+                    doc = QtGui.QTextDocument()
+                    to = doc.defaultTextOption()
+                    to.setWrapMode(QtGui.QTextOption.WordWrap)
+                    doc.setDefaultTextOption(to)
+                    doc.setDefaultFont(self._font)
+                    doc.setPlainText(text)
+                    doc.setTextWidth(max(50, option.rect.width() - self.padding * 2))
+                    painter.translate(option.rect.left() + self.padding, option.rect.top() + self.padding)
+                    doc.drawContents(painter)
+                    painter.restore()
+
+                def sizeHint(self, option, index):
+                    text = index.data(QtCore.Qt.DisplayRole) or ''
+                    doc = QtGui.QTextDocument()
+                    doc.setDefaultFont(self._font)
+                    doc.setPlainText(text)
+                    parent = self.parent()
+                    width = 300
+                    try:
+                        if parent is not None:
+                            width = max(80, parent.viewport().width() - self.padding * 2)
+                    except Exception:
+                        pass
+                    doc.setTextWidth(width)
+                    sz = doc.size().toSize()
+                    sz.setHeight(sz.height() + self.padding * 2)
+                    return sz
+
+            self.list_widget.setItemDelegate(ArticleDelegate(self.list_widget))
+        except Exception:
+            pass
 
         # 右: QWebEngineView とそのラッパー
         raw_web = QWebEngineView()
@@ -138,65 +191,73 @@ class QtApp(QtWidgets.QMainWindow):
         splitter.addWidget(raw_web)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([300, 700])
-        h.addWidget(splitter)
+
+        # wrap raw webview so wrapper behaviors (e.g. horizontal centering)
+        # are actually used by the presenter/view methods
         try:
-            from gamer.ui.webview import QtWebViewWrapper
             self.webview = QtWebViewWrapper(raw_web)
         except Exception:
-            self.webview = None
-        self.web = raw_web
+            # fallback to raw view if wrapper import/creation fails
+            self.webview = raw_web
 
-        # ステータスバー
-        self.status = self.statusBar()
-
-        # ツールバー（リフレッシュ、外部で開く、ダーク切替）
+        # add splitter to central layout
         try:
-            toolbar = self.addToolBar('Main')
-            refresh_act = QtWidgets.QAction('更新', self)
-            refresh_act.triggered.connect(lambda: self.presenter.load_feed())
-            toolbar.addAction(refresh_act)
-            open_act = QtWidgets.QAction('外部で開く', self)
-            open_act.triggered.connect(self._open_in_external)
-            toolbar.addAction(open_act)
-            dark_act = QtWidgets.QAction('ダーク', self)
-            dark_act.setCheckable(True)
-            dark_act.triggered.connect(lambda checked: self._apply_theme(checked))
-            toolbar.addAction(dark_act)
+            h.addWidget(splitter)
+        except Exception:
+            central.layout().addWidget(splitter)
+
+        # status bar + signal hookup
+        try:
+            self._status_bar = QtWidgets.QStatusBar()
+            self.setStatusBar(self._status_bar)
             try:
-                dark_act.setChecked(True)
+                # connect internal signal to status bar
+                self.status_message.connect(lambda msg, t=0: self._status_bar.showMessage(msg, t))
             except Exception:
                 pass
         except Exception:
             pass
 
-        # シグナル接続
-        self.status_message.connect(self.status.showMessage)
-        self.list_ready.connect(self.populate_list)
-
-        # Presenter を作成して RSS を読み込む（RssAdapter を依存注入）
+        # initialize presenter and connect list-ready signal
         try:
-            from gamer.adapters.rss_adapter import RssAdapter
-            rss_adapter = RssAdapter()
-        except Exception:
-            rss_adapter = None
-        self.presenter = FeedPresenter(self, self.rss_url, headers=HEADERS, rss_gateway=rss_adapter)
-        # 非同期ロード
-        self.presenter.load_feed()
-
-        # no fade helpers (direct navigation)
-
-    def load_url(self, url: str):
-        try:
-            if getattr(self, 'webview', None) is not None:
-                self.webview.load(url)
-            else:
-                self.web.load(QtCore.QUrl(url))
+            self.presenter = FeedPresenter(view=self, rss_url=self.rss_url)
+            try:
+                self.list_ready.connect(self.populate_list)
+            except Exception:
+                pass
+            # start initial load
+            try:
+                self.presenter.load_feed()
+            except Exception:
+                pass
         except Exception:
             pass
 
     
 
     # Implement ViewPort methods so presenter can call them directly
+    def load_url(self, url: str) -> None:
+        try:
+            # prefer wrapper interface which accepts a string URL
+            try:
+                self.webview.load(str(url))
+                return
+            except Exception:
+                pass
+            # fallback: try QWebEngineView.load with QUrl
+            try:
+                q = url if isinstance(url, QtCore.QUrl) else QtCore.QUrl(str(url))
+                raw = getattr(self, 'webview', None) or getattr(self, 'web', None)
+                if raw is not None:
+                    # if raw is a wrapper, it may not accept QUrl; try .view.load
+                    if hasattr(raw, 'view'):
+                        raw.view.load(q)
+                    else:
+                        raw.load(q)
+            except Exception:
+                pass
+        except Exception:
+            pass
     def show_status(self, message: str, timeout_ms: int = 0) -> None:
         try:
             self.status_message.emit(message, timeout_ms)
@@ -327,15 +388,8 @@ class QtApp(QtWidgets.QMainWindow):
             except Exception:
                 pass
         try:
-            # ensure the list updates its geometry and repaints
-            try:
-                self.list_widget.updateGeometries()
-            except Exception:
-                pass
-            try:
-                self.list_widget.viewport().update()
-            except Exception:
-                pass
+            self.list_widget.updateGeometries()
+            self.list_widget.viewport().update()
         except Exception:
             pass
 
