@@ -236,10 +236,17 @@ class QtApp(QtWidgets.QMainWindow):
 
         # 右: QWebEngineView とそのラッパー
         raw_web = QWebEngineView()
+        # wrap the raw webview in a container so overlay widgets can be parented reliably
+        web_container = QtWidgets.QWidget()
+        web_layout = QtWidgets.QVBoxLayout(web_container)
+        web_layout.setContentsMargins(0, 0, 0, 0)
+        web_layout.setSpacing(0)
+        web_layout.addWidget(raw_web)
+
         # use a splitter for modern resizable panes
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.addWidget(self.list_widget)
-        splitter.addWidget(raw_web)
+        splitter.addWidget(web_container)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([300, 700])
 
