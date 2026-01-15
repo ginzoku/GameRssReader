@@ -160,11 +160,16 @@ class QtWebViewWrapper(WebViewPort):
             bar.setStyleSheet('background: rgba(0,0,0,0.65); color: white;')
 
             layout = QHBoxLayout(bar)
-            layout.setContentsMargins(8, 4, 8, 4)
+            layout.setContentsMargins(14, 4, 8, 4)
             layout.setSpacing(8)
 
             url_label = QLabel('', bar)
             url_label.setStyleSheet('color: white;')
+            # shift text slightly to the right for visual spacing
+            try:
+                url_label.setIndent(6)
+            except Exception:
+                pass
             url_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             layout.addWidget(url_label, 1)
 
@@ -213,7 +218,8 @@ class QtWebViewWrapper(WebViewPort):
                     vx = 0; vy = 0; vw = self.view.width(); vh = self.view.height()
             bh = bar.height()
             x = vx
-            y = vy + max(0, vh - bh - margin)
+            # align bottom edges: bar.bottom == view.bottom
+            y = vy + (vh - bh)
             bar.setGeometry(x, y, vw, bh)
             bar.raise_()
             # show if page has a URL
