@@ -28,6 +28,7 @@ GENRES = {
     'アナログ': 'https://www.4gamer.net/tags/TS/TS020/contents.xml',
     'VR': 'https://www.4gamer.net/rss/vr/vr_news.xml',
     '雑多(GameSpark)': 'https://www.gamespark.jp/rss/index.rdf',
+    '雑多(Automaton)': 'https://automaton-media.com/feed/',
 }
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 
