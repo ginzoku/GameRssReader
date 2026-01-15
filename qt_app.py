@@ -29,6 +29,8 @@ GENRES = {
     'VR': 'https://www.4gamer.net/rss/vr/vr_news.xml',
     '雑多(GameSpark)': 'https://www.gamespark.jp/rss/index.rdf',
     '雑多(Automaton)': 'https://automaton-media.com/feed/',
+    'PC(GameSpark)': 'https://www.gamespark.jp/category/pc/latest/?page=1',
+    'PCゲーム(Automaton)': 'https://automaton-media.com/pc-steam-epic-games-store-gog/?query-19d0b21f=1',
 }
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 

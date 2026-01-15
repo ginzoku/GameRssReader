@@ -42,8 +42,29 @@ class FeedPresenter:
                 if self.rss_gateway:
                     items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
                 else:
-                    from ..adapters.rss_adapter import fetch_rss
-                    items = fetch_rss(self.rss_url, headers=self.headers)
+                    # Special-case: Automaton category/search pages
+                    try:
+                        if 'automaton-media.com' in (self.rss_url or ''):
+                            from ..utils.automaton_url_parser import AutomatonUrlParser
+                            # use the post-310463-specific extractor to limit scope
+                            parsed = AutomatonUrlParser.extract_post310463_articles(self.rss_url, headers=self.headers)
+                            items = [
+                                {'title': (p.get('title') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                                for p in parsed
+                            ]
+                        elif 'gamespark.jp' in (self.rss_url or '') and '/category/' in (self.rss_url or ''):
+                            from ..utils.gamespark_url_parser import GameSparkUrlParser
+                            parsed = GameSparkUrlParser.extract_article_links(self.rss_url, headers=self.headers, include_alt=True)
+                            items = [
+                                {'title': (p.get('alt') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                                for p in parsed
+                            ]
+                        else:
+                            from ..adapters.rss_adapter import fetch_rss
+                            items = fetch_rss(self.rss_url, headers=self.headers)
+                    except Exception:
+                        from ..adapters.rss_adapter import fetch_rss
+                        items = fetch_rss(self.rss_url, headers=self.headers)
                 self._emit_list(items)
                 self._emit_status('RSS を取得しました', 3000)
             except Exception as e:
@@ -58,8 +79,27 @@ class FeedPresenter:
             if self.rss_gateway:
                 items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
             else:
-                from ..adapters.rss_adapter import fetch_rss
-                items = fetch_rss(self.rss_url, headers=self.headers)
+                try:
+                    if 'automaton-media.com' in (self.rss_url or ''):
+                        from ..utils.automaton_url_parser import AutomatonUrlParser
+                        parsed = AutomatonUrlParser.extract_post310463_articles(self.rss_url, headers=self.headers)
+                        items = [
+                            {'title': (p.get('title') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                            for p in parsed
+                        ]
+                    elif 'gamespark.jp' in (self.rss_url or '') and '/category/' in (self.rss_url or ''):
+                        from ..utils.gamespark_url_parser import GameSparkUrlParser
+                        parsed = GameSparkUrlParser.extract_article_links(self.rss_url, headers=self.headers, include_alt=True)
+                        items = [
+                            {'title': (p.get('alt') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                            for p in parsed
+                        ]
+                    else:
+                        from ..adapters.rss_adapter import fetch_rss
+                        items = fetch_rss(self.rss_url, headers=self.headers)
+                except Exception:
+                    from ..adapters.rss_adapter import fetch_rss
+                    items = fetch_rss(self.rss_url, headers=self.headers)
             self._emit_list(items)
             self._emit_status('RSS を取得しました', 3000)
             return items
