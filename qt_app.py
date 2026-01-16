@@ -7,31 +7,44 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from gamer.presenter.feed_presenter import FeedPresenter
 from gamer.ui.webview import QtWebViewWrapper
 
+
 BASE_URL = "https://www.4gamer.net/"
 PC_RSS = "https://www.4gamer.net/rss/pc/pc_news.xml"
 ONLINE_RSS = "https://www.4gamer.net/rss/all_onlinegame.xml"
 RSS_URL = PC_RSS
-# ジャンル名 -> RSS URL マップ
-GENRES = {
-    'オンライン': ONLINE_RSS,
-    'PC': PC_RSS,
-    'オンラインRPG': 'https://www.4gamer.net/rss/online/online_rpg.xml',
-    'Xbox': 'https://www.4gamer.net/rss/xbox360/xbox360_news.xml',
-    'PlayStation': 'https://www.4gamer.net/rss/ps3/ps3_news.xml',
-    'PSP/Vita': 'https://www.4gamer.net/rss/psp/psp_news.xml',
-    'Switch': 'https://www.4gamer.net/rss/nintendo_switch/nintendo_switch_news.xml',
-    'Wii': 'https://www.4gamer.net/rss/wii/wii_news.xml',
-    'DS': 'https://www.4gamer.net/rss/nds/nds_news.xml',
-    'スマートフォン': 'https://www.4gamer.net/rss/smartphone/smartphone_index.xml',
-    'ハードウェア': 'https://www.4gamer.net/rss/hardware/hw_news.xml',
-    'アーケード': 'https://www.4gamer.net/rss/arcade/arcade_news.xml',
-    'アナログ': 'https://www.4gamer.net/tags/TS/TS020/contents.xml',
-    'VR': 'https://www.4gamer.net/rss/vr/vr_news.xml',
-    '雑多(GameSpark)': 'https://www.gamespark.jp/rss/index.rdf',
-    '雑多(Automaton)': 'https://automaton-media.com/feed/',
-    'PC(GameSpark)': 'https://www.gamespark.jp/category/pc/latest/?page=1',
-    'PCゲーム(Automaton)': 'https://automaton-media.com/pc-steam-epic-games-store-gog/?query-19d0b21f=1',
+
+# サイトごとのジャンルマップ
+SITES = {
+    '4Gamer': {
+        'オンライン': ONLINE_RSS,
+        'PC': PC_RSS,
+        'オンラインRPG': 'https://www.4gamer.net/rss/online/online_rpg.xml',
+        'Xbox': 'https://www.4gamer.net/rss/xbox360/xbox360_news.xml',
+        'PlayStation': 'https://www.4gamer.net/rss/ps3/ps3_news.xml',
+        'PSP/Vita': 'https://www.4gamer.net/rss/psp/psp_news.xml',
+        'Switch': 'https://www.4gamer.net/rss/nintendo_switch/nintendo_switch_news.xml',
+        'Wii': 'https://www.4gamer.net/rss/wii/wii_news.xml',
+        'DS': 'https://www.4gamer.net/rss/nds/nds_news.xml',
+        'スマートフォン': 'https://www.4gamer.net/rss/smartphone/smartphone_index.xml',
+        'ハードウェア': 'https://www.4gamer.net/rss/hardware/hw_news.xml',
+        'アーケード': 'https://www.4gamer.net/rss/arcade/arcade_news.xml',
+        'アナログ': 'https://www.4gamer.net/tags/TS/TS020/contents.xml',
+        'VR': 'https://www.4gamer.net/rss/vr/vr_news.xml',
+    },
+    'GameSpark': {
+        '特集': 'https://www.gamespark.jp/category/featured/latest/?page=1',
+        'PCゲーム': 'https://www.gamespark.jp/category/pc/latest/?page=1',
+        '家庭用ゲーム': 'https://www.gamespark.jp/category/console/latest/?page=1',
+        'セール・無料': 'https://www.gamespark.jp/category/news/sale/latest/?page=1',
+    },
+    'Automaton': {
+        '雑多': 'https://automaton-media.com/feed/',
+        'PCゲーム': 'https://automaton-media.com/pc-steam-epic-games-store-gog/?query-19d0b21f=1',
+    }
 }
+
+# デフォルトサイト
+DEFAULT_SITE = '4Gamer'
 HEADERS = {"User-Agent": "4games-scraper/1.0 (+https://example.com)"}
 
 # アーカイブ（キーワードベースの簡易フィルタ）
@@ -104,48 +117,96 @@ class QtApp(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-        # ジャンル一覧: 左端に固定幅のリストを置く（メニューの代替）
+        # 左側: サイト一覧をツリーで表示（クリックで展開、子要素クリックでジャンル選択）
         try:
-            self.genre_list = QtWidgets.QListWidget()
-            self.genre_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-            for name in GENRES.keys():
+            self.current_site = DEFAULT_SITE
+            tree = QtWidgets.QTreeWidget()
+            tree.setHeaderHidden(True)
+            tree.setRootIsDecorated(False)
+            # enable animated expand/collapse (slide-like expansion)
+            try:
+                tree.setAnimated(True)
+            except Exception:
+                pass
+
+            # build tree: top-level = site, children = genres
+            for site, genres in SITES.items():
                 try:
-                    it = QtWidgets.QListWidgetItem(name)
-                    self.genre_list.addItem(it)
+                    top = QtWidgets.QTreeWidgetItem([site])
+                    for name in genres.keys():
+                        child = QtWidgets.QTreeWidgetItem([name])
+                        top.addChild(child)
+                    tree.addTopLevelItem(top)
                 except Exception:
                     pass
-            # compute fixed width based on longest genre text
+
+            # collapse all initially
             try:
-                fm = self.genre_list.fontMetrics()
+                for i in range(tree.topLevelItemCount()):
+                    tree.topLevelItem(i).setExpanded(False)
+            except Exception:
+                pass
+
+            def _on_item_clicked(item, col):
+                try:
+                    # top-level clicked -> toggle expand/collapse
+                    if item.childCount() > 0:
+                        item.setExpanded(not item.isExpanded())
+                        return
+                    # child clicked -> select genre
+                    parent = item.parent()
+                    if parent is None:
+                        return
+                    site = str(parent.text(0))
+                    genre = str(item.text(0))
+                    self.current_site = site
+                    self.change_genre(genre)
+                except Exception:
+                    pass
+
+            tree.itemClicked.connect(_on_item_clicked)
+
+            # compute reasonable width from content and lock it (fixed)
+            try:
+                fm = tree.fontMetrics()
                 maxw = 0
-                for i in range(self.genre_list.count()):
+                for site, genres in SITES.items():
                     try:
-                        txt = self.genre_list.item(i).text()
-                        w = fm.horizontalAdvance(txt)
+                        w = fm.horizontalAdvance(str(site))
                         if w > maxw:
                             maxw = w
                     except Exception:
                         pass
-                padding = 28
-                target = max(80, maxw + padding)
-                self.genre_list.setFixedWidth(target)
-                self.genre_list.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+                    for name in genres.keys():
+                        try:
+                            w = fm.horizontalAdvance(str(name))
+                            if w > maxw:
+                                maxw = w
+                        except Exception:
+                            pass
+                padding = 48
+                target = max(120, maxw + padding)
+                # fix width so splitter can't resize it
+                tree.setFixedWidth(target)
+                tree.setMinimumWidth(target)
+                tree.setMaximumWidth(target)
             except Exception:
                 pass
-            # select current rss_url if present
+
+            # style: match article list colors (dark theme)
             try:
-                cur_idx = 0
-                for i, (n, u) in enumerate(GENRES.items()):
-                    if u == self.rss_url:
-                        cur_idx = i
-                        break
-                self.genre_list.setCurrentRow(cur_idx)
+                tree.setStyleSheet('''
+                    QTreeWidget { background: #071018; color: #e6eef6; border: 1px solid #0f1a22; padding:6px; border-radius:8px; }
+                    QTreeWidget::item { padding:4px 6px; }
+                    QTreeWidget::item:selected { background: #133044; color: #ffffff; }
+                ''')
             except Exception:
                 pass
-            self.genre_list.itemActivated.connect(lambda it: self.change_genre(str(it.text())))
-            self.genre_list.currentRowChanged.connect(lambda r: self._on_genre_row_changed(r))
+
+            self.left_panel = tree
+            self.site_tree = tree
         except Exception:
-            self.genre_list = None
+            self.left_panel = None
 
         # 左: リスト
         self.list_widget = QtWidgets.QListWidget()
@@ -275,42 +336,40 @@ class QtApp(QtWidgets.QMainWindow):
             splitter.setHandleWidth(6)
         except Exception:
             pass
-        # insert genre_list at the left if available
-        if getattr(self, 'genre_list', None) is not None:
-            try:
-                splitter.addWidget(self.genre_list)
-            except Exception:
-                pass
+        # insert left panel (tree), article list, and web view
+        try:
+            if getattr(self, 'left_panel', None) is not None:
+                splitter.addWidget(self.left_panel)
+        except Exception:
+            pass
         splitter.addWidget(self.list_widget)
         splitter.addWidget(web_container)
-        # make genre column fixed, article column fixed-ish, and give remaining space to web view
+        # make columns: left_panel, article, web — give remaining space to web view
         try:
-            # ensure genre_list is not collapsible
-            if getattr(self, 'genre_list', None) is not None:
-                try:
-                    splitter.setCollapsible(0, False)
-                except Exception:
-                    pass
-            # set sensible stretch: last (web view) expands
             try:
                 splitter.setStretchFactor(0, 0)
                 splitter.setStretchFactor(1, 0)
                 splitter.setStretchFactor(2, 1)
             except Exception:
                 pass
+            # prevent left panel from being collapsible / resizable
             try:
-                g = self.genre_list.width() if getattr(self, 'genre_list', None) is not None else 0
+                splitter.setCollapsible(0, False)
             except Exception:
-                g = 120
+                pass
+            try:
+                left_w = self.left_panel.width() if getattr(self, 'left_panel', None) is not None else 140
+            except Exception:
+                left_w = 140
             try:
                 list_w = min(380, max(200, int(self.width() * 0.3)))
             except Exception:
                 list_w = 300
             try:
-                web_w = max(200, self.width() - g - list_w)
+                web_w = max(200, self.width() - left_w - list_w)
             except Exception:
                 web_w = 700
-            splitter.setSizes([g, list_w, web_w])
+            splitter.setSizes([left_w, list_w, web_w])
         except Exception:
             try:
                 splitter.setStretchFactor(1, 1)
@@ -527,12 +586,13 @@ class QtApp(QtWidgets.QMainWindow):
 
     def change_genre(self, which: str):
         try:
-            if which in GENRES:
-                self.rss_url = GENRES[which]
+            site_map = SITES.get(getattr(self, 'current_site', DEFAULT_SITE), {})
+            if which in site_map:
+                self.rss_url = site_map[which]
                 # update selection in genre_list if present
                 try:
                     if getattr(self, 'genre_list', None) is not None:
-                        for i, n in enumerate(GENRES.keys()):
+                        for i, n in enumerate(site_map.keys()):
                             try:
                                 if n == which:
                                     self.genre_list.setCurrentRow(i)
@@ -550,18 +610,7 @@ class QtApp(QtWidgets.QMainWindow):
         except Exception:
             pass
 
-    def _on_genre_row_changed(self, row: int):
-        try:
-            if row < 0:
-                return
-            if getattr(self, 'genre_list', None) is None:
-                return
-            item = self.genre_list.item(row)
-            if item is None:
-                return
-            self.change_genre(str(item.text()))
-        except Exception:
-            pass
+    # NOTE: site/genre row handlers removed — tabs+combo handle selection now
 
     def change_archive(self, which: str):
         try:

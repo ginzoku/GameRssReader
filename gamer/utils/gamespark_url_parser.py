@@ -27,22 +27,41 @@ class GameSparkUrlParser:
         resp = requests.get(page_url, headers=h, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, 'html.parser')
+        # Prefer structured news list: find div.news-list and extract
         seen = {}
-        for a in soup.find_all('a', href=True):
-            href = a['href'].strip()
-            abs_url = urljoin(page_url, href)
-            p = urlparse(abs_url)
-            if cls._pattern.match(p.path):
-                alt = ''
-                img = a.find('img')
-                if img and img.has_attr('alt'):
+        try:
+            container = soup.find('div', class_='news-list') or soup
+            # select highlighted and normal items in document order
+            nodes = container.select('.item--highlight, .item--normal')
+            for node in nodes:
+                try:
+                    a = node.find('a', href=True)
+                    if not a:
+                        continue
+                    href = a['href'].strip()
+                    abs_url = urljoin(page_url, href)
+                    if abs_url in seen:
+                        continue
+                    # title: prefer <img class="figure" alt="..."> inside the link,
+                    # fallback to any <img> alt, then anchor text
+                    alt = ''
                     try:
-                        alt = (img.get('alt') or '').strip()
+                        img = a.find('img', class_='figure')
+                        if img is None:
+                            img = a.find('img')
+                        if img and img.has_attr('alt'):
+                            alt = (img.get('alt') or '').strip()
                     except Exception:
                         alt = ''
-                seen[abs_url] = alt
+                    if not alt:
+                        alt = (a.get_text(strip=True) or '')
+                    seen[abs_url] = alt
+                except Exception:
+                    pass
+        except Exception:
+            seen = {}
 
-        items = [{'url': u, 'alt': seen[u]} for u in sorted(seen.keys())]
+        items = [{'url': u, 'alt': seen[u]} for u in seen.keys()]
         if include_alt:
             return items
         return [i['url'] for i in items]
