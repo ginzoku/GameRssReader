@@ -97,39 +97,65 @@ class QtApp(QtWidgets.QMainWindow):
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         h = QtWidgets.QHBoxLayout(central)
+        # remove outer margins so panes align to window edges
+        try:
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(0)
+        except Exception:
+            pass
 
-        # メニューバー: ジャンル選択（GENRES から自動生成）
-        menubar = self.menuBar()
-        genre_menu = menubar.addMenu('ジャンル')
-        # QActionGroup が環境で利用できない場合もあるため、手動でチェック管理する
-        self.genre_actions = {}
-        for name, url in GENRES.items():
+        # ジャンル一覧: 左端に固定幅のリストを置く（メニューの代替）
+        try:
+            self.genre_list = QtWidgets.QListWidget()
+            self.genre_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            for name in GENRES.keys():
+                try:
+                    it = QtWidgets.QListWidgetItem(name)
+                    self.genre_list.addItem(it)
+                except Exception:
+                    pass
+            # compute fixed width based on longest genre text
             try:
-                act = QtWidgets.QAction(name, self)
+                fm = self.genre_list.fontMetrics()
+                maxw = 0
+                for i in range(self.genre_list.count()):
+                    try:
+                        txt = self.genre_list.item(i).text()
+                        w = fm.horizontalAdvance(txt)
+                        if w > maxw:
+                            maxw = w
+                    except Exception:
+                        pass
+                padding = 28
+                target = max(80, maxw + padding)
+                self.genre_list.setFixedWidth(target)
+                self.genre_list.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
             except Exception:
-                act = QtGui.QAction(name, self)
-            act.setCheckable(True)
-            if GENRES.get(name) == self.rss_url:
-                act.setChecked(True)
-            genre_menu.addAction(act)
-            act.triggered.connect(lambda checked, n=name: self.change_genre(n))
-            self.genre_actions[name] = act
-
-        # アーカイブメニュー（キーワードで現在のリストをフィルタ）
-        archive_menu = menubar.addMenu('アーカイブ')
-        self.archive_actions = {}
-        for key in ARCHIVES:
+                pass
+            # select current rss_url if present
             try:
-                a = QtWidgets.QAction(key, self)
+                cur_idx = 0
+                for i, (n, u) in enumerate(GENRES.items()):
+                    if u == self.rss_url:
+                        cur_idx = i
+                        break
+                self.genre_list.setCurrentRow(cur_idx)
             except Exception:
-                a = QtGui.QAction(key, self)
-            archive_menu.addAction(a)
-            a.triggered.connect(lambda checked, k=key: self.change_archive(k))
-            self.archive_actions[key] = a
+                pass
+            self.genre_list.itemActivated.connect(lambda it: self.change_genre(str(it.text())))
+            self.genre_list.currentRowChanged.connect(lambda r: self._on_genre_row_changed(r))
+        except Exception:
+            self.genre_list = None
 
         # 左: リスト
         self.list_widget = QtWidgets.QListWidget()
         self.list_widget.setMaximumWidth(380)
+        try:
+            # remove inner margins/padding so items sit flush to the left edge
+            self.list_widget.setContentsMargins(0, 0, 0, 0)
+            self.list_widget.setStyleSheet("QListWidget{ padding: 2px; margin:0; }")
+        except Exception:
+            pass
         # allow per-item heights provided by the delegate/sizeHint
         self.list_widget.setUniformItemSizes(False)
         self.list_widget.setSpacing(2)
@@ -245,10 +271,52 @@ class QtApp(QtWidgets.QMainWindow):
 
         # use a splitter for modern resizable panes
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        try:
+            splitter.setHandleWidth(6)
+        except Exception:
+            pass
+        # insert genre_list at the left if available
+        if getattr(self, 'genre_list', None) is not None:
+            try:
+                splitter.addWidget(self.genre_list)
+            except Exception:
+                pass
         splitter.addWidget(self.list_widget)
         splitter.addWidget(web_container)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([300, 700])
+        # make genre column fixed, article column fixed-ish, and give remaining space to web view
+        try:
+            # ensure genre_list is not collapsible
+            if getattr(self, 'genre_list', None) is not None:
+                try:
+                    splitter.setCollapsible(0, False)
+                except Exception:
+                    pass
+            # set sensible stretch: last (web view) expands
+            try:
+                splitter.setStretchFactor(0, 0)
+                splitter.setStretchFactor(1, 0)
+                splitter.setStretchFactor(2, 1)
+            except Exception:
+                pass
+            try:
+                g = self.genre_list.width() if getattr(self, 'genre_list', None) is not None else 0
+            except Exception:
+                g = 120
+            try:
+                list_w = min(380, max(200, int(self.width() * 0.3)))
+            except Exception:
+                list_w = 300
+            try:
+                web_w = max(200, self.width() - g - list_w)
+            except Exception:
+                web_w = 700
+            splitter.setSizes([g, list_w, web_w])
+        except Exception:
+            try:
+                splitter.setStretchFactor(1, 1)
+                splitter.setSizes([300, 700])
+            except Exception:
+                pass
 
         # wrap raw webview so wrapper behaviors (e.g. horizontal centering)
         # are actually used by the presenter/view methods
@@ -461,17 +529,37 @@ class QtApp(QtWidgets.QMainWindow):
         try:
             if which in GENRES:
                 self.rss_url = GENRES[which]
-                for n, a in getattr(self, 'genre_actions', {}).items():
-                    try:
-                        a.setChecked(n == which)
-                    except Exception:
-                        pass
+                # update selection in genre_list if present
+                try:
+                    if getattr(self, 'genre_list', None) is not None:
+                        for i, n in enumerate(GENRES.keys()):
+                            try:
+                                if n == which:
+                                    self.genre_list.setCurrentRow(i)
+                                    break
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 self.status_message.emit(f'ジャンル: {which} に切替え', 2000)
             else:
                 self.rss_url = PC_RSS
                 self.status_message.emit('ジャンル: PC に切替え (既定)', 2000)
             self.presenter.rss_url = self.rss_url
             self.presenter.load_feed()
+        except Exception:
+            pass
+
+    def _on_genre_row_changed(self, row: int):
+        try:
+            if row < 0:
+                return
+            if getattr(self, 'genre_list', None) is None:
+                return
+            item = self.genre_list.item(row)
+            if item is None:
+                return
+            self.change_genre(str(item.text()))
         except Exception:
             pass
 
