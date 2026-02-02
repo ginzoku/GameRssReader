@@ -38,7 +38,6 @@ SITES = {
         'セール・無料': 'https://www.gamespark.jp/category/news/sale/latest/?page=1',
     },
     'Automaton': {
-        '雑多': 'https://automaton-media.com/feed/',
         'PCゲーム': 'https://automaton-media.com/pc-steam-epic-games-store-gog/?query-19d0b21f=1',
     }
 }
@@ -64,6 +63,9 @@ class QtApp(QtWidgets.QMainWindow):
         self.setWindowTitle('4Gamer - QtWebEngine ビュー')
         self.resize(1000, 700)
         self.rss_url = RSS_URL
+        # paging settings
+        self.page_size = 20
+        self.current_page = 0
 
         # stylesheets (light + dark) and current theme helper
         self._light_stylesheet = '''
@@ -321,6 +323,40 @@ class QtApp(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+        # wrap list_widget in a container to add pager controls beneath
+        try:
+            self.list_container = QtWidgets.QWidget()
+            list_layout = QtWidgets.QVBoxLayout(self.list_container)
+            list_layout.setContentsMargins(0, 0, 0, 0)
+            list_layout.setSpacing(4)
+            list_layout.addWidget(self.list_widget)
+
+            pager = QtWidgets.QWidget()
+            pager_layout = QtWidgets.QHBoxLayout(pager)
+            pager_layout.setContentsMargins(6, 4, 6, 4)
+            pager_layout.setSpacing(6)
+            try:
+                self.prev_btn = QtWidgets.QPushButton('Prev')
+                self.page_label = QtWidgets.QLabel('Page 1/1')
+                self.next_btn = QtWidgets.QPushButton('Next')
+                self.prev_btn.setFixedWidth(60)
+                self.next_btn.setFixedWidth(60)
+                pager_layout.addStretch()
+                pager_layout.addWidget(self.prev_btn)
+                pager_layout.addWidget(self.page_label)
+                pager_layout.addWidget(self.next_btn)
+                pager_layout.addStretch()
+                list_layout.addWidget(pager)
+                try:
+                    self.prev_btn.clicked.connect(self._on_prev)
+                    self.next_btn.clicked.connect(self._on_next)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        except Exception:
+            self.list_container = self.list_widget
+
         # 右: QWebEngineView とそのラッパー
         raw_web = QWebEngineView()
         # wrap the raw webview in a container so overlay widgets can be parented reliably
@@ -342,7 +378,11 @@ class QtApp(QtWidgets.QMainWindow):
                 splitter.addWidget(self.left_panel)
         except Exception:
             pass
-        splitter.addWidget(self.list_widget)
+        # add the list container (which includes pager) instead of raw list_widget
+        try:
+            splitter.addWidget(getattr(self, 'list_container', self.list_widget))
+        except Exception:
+            splitter.addWidget(self.list_widget)
         splitter.addWidget(web_container)
         # make columns: left_panel, article, web — give remaining space to web view
         try:
@@ -458,52 +498,26 @@ class QtApp(QtWidgets.QMainWindow):
 
     @QtCore.Slot(object)
     def populate_list(self, items):
-        self.items = items
-        self.list_widget.clear()
+        # store full items and reset to first page
+        self.full_items = items or []
+        # keep legacy `items` attribute for presenter compatibility
+        try:
+            self.items = self.full_items
+        except Exception:
+            pass
         # apply pending archive filter if any
         if getattr(self, '_pending_archive', None):
-            items = self._apply_archive_filter(self._pending_archive, items)
-            # clear pending
+            self.full_items = self._apply_archive_filter(self._pending_archive, self.full_items)
             self._pending_archive = None
-        for it in items:
-            title = it.get('title')
-            pub = it.get('pubDate')
-            txt = f"{pub} - {title}" if pub else title
-            # Quick fallback: add plain QListWidgetItem so text is always visible
-            try:
-                item = QtWidgets.QListWidgetItem(str(txt or ''))
-                try:
-                    fnt = item.font()
-                    fnt.setBold(True)
-                    fnt.setPointSize(12)
-                    item.setFont(fnt)
-                except Exception:
-                    pass
-                try:
-                    item.setForeground(QtGui.QColor('#ffffff'))
-                except Exception:
-                    pass
-                self.list_widget.addItem(item)
-            except Exception:
-                # if adding as item fails, skip gracefully
-                pass
-        # try to process pending events so layout/viewport sizes are up-to-date,
-        # then update item widths; fallback to scheduling if immediate update fails
         try:
-            try:
-                QtWidgets.QApplication.processEvents()
-            except Exception:
-                pass
-            self._update_list_item_widths()
-            try:
-                self.list_widget.updateGeometries()
-            except Exception:
-                pass
+            self.current_page = 0
         except Exception:
-            try:
-                QtCore.QTimer.singleShot(0, self._update_list_item_widths)
-            except Exception:
-                pass
+            pass
+        # render current page
+        try:
+            self._render_page()
+        except Exception:
+            pass
 
     def resizeEvent(self, event):
         try:
@@ -549,12 +563,112 @@ class QtApp(QtWidgets.QMainWindow):
         except Exception:
             pass
 
+    def _render_page(self):
+        try:
+            items = getattr(self, 'full_items', []) or []
+            total = len(items)
+            if total == 0:
+                self.list_widget.clear()
+                try:
+                    self.page_label.setText('Page 0/0')
+                except Exception:
+                    pass
+                return
+
+            start = self.current_page * self.page_size
+            end = start + self.page_size
+            page_items = items[start:end]
+
+            self.list_widget.clear()
+            for it in page_items:
+                try:
+                    title = it.get('title')
+                    pub = it.get('pubDate')
+                    txt = f"{pub} - {title}" if pub else title
+                    item = QtWidgets.QListWidgetItem(str(txt or ''))
+                    try:
+                        fnt = item.font()
+                        fnt.setBold(True)
+                        fnt.setPointSize(12)
+                        item.setFont(fnt)
+                    except Exception:
+                        pass
+                    try:
+                        item.setForeground(QtGui.QColor('#ffffff'))
+                    except Exception:
+                        pass
+                    self.list_widget.addItem(item)
+                except Exception:
+                    pass
+
+            # update page label and controls
+            try:
+                total_pages = max(1, (total + self.page_size - 1) // self.page_size)
+                self.page_label.setText(f'Page {self.current_page+1}/{total_pages}')
+                self._update_page_controls(total, total_pages)
+            except Exception:
+                pass
+
+            try:
+                QtWidgets.QApplication.processEvents()
+            except Exception:
+                pass
+            try:
+                self._update_list_item_widths()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _on_prev(self):
+        try:
+            if self.current_page > 0:
+                self.current_page -= 1
+                self._render_page()
+        except Exception:
+            pass
+
+    def _on_next(self):
+        try:
+            items = getattr(self, 'full_items', []) or []
+            total = len(items)
+            total_pages = max(1, (total + self.page_size - 1) // self.page_size)
+            if self.current_page + 1 < total_pages:
+                self.current_page += 1
+                self._render_page()
+        except Exception:
+            pass
+
+    def _update_page_controls(self, total, total_pages):
+        try:
+            if total <= 0:
+                try:
+                    self.prev_btn.setEnabled(False)
+                    self.next_btn.setEnabled(False)
+                except Exception:
+                    pass
+                return
+            try:
+                self.prev_btn.setEnabled(self.current_page > 0)
+                self.next_btn.setEnabled(self.current_page + 1 < total_pages)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _open_in_external(self):
         try:
             row = self.list_widget.currentRow()
             if row < 0:
                 return
-            url = self.items[row].get('link')
+            # convert page-local row to global index
+            global_idx = getattr(self, 'current_page', 0) * getattr(self, 'page_size', 20) + row
+            items = getattr(self, 'full_items', None) or getattr(self, 'items', None) or []
+            url = None
+            try:
+                url = items[global_idx].get('link')
+            except Exception:
+                url = None
             if not url:
                 return
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
@@ -571,16 +685,25 @@ class QtApp(QtWidgets.QMainWindow):
             pass
 
     def on_item_activated(self, item):
-        idx = self.list_widget.row(item)
-        self.presenter.select(idx)
+        try:
+            idx = self.list_widget.row(item)
+            global_idx = getattr(self, 'current_page', 0) * getattr(self, 'page_size', 20) + idx
+            self.presenter.select(global_idx)
+        except Exception:
+            pass
 
     def on_row_changed(self, row: int):
         try:
             if row < 0:
                 return
-            if not hasattr(self, 'items') or row >= len(self.items):
+            # convert page-local row to global index
+            items = getattr(self, 'full_items', None) or getattr(self, 'items', None)
+            if items is None:
                 return
-            self.presenter.select(row)
+            global_idx = getattr(self, 'current_page', 0) * getattr(self, 'page_size', 20) + row
+            if global_idx >= len(items):
+                return
+            self.presenter.select(global_idx)
         except Exception:
             pass
 

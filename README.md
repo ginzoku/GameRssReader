@@ -46,42 +46,94 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 python main.py
 ```
 
-- Qt ベースのアプリ（Qt WebEngine を利用）:
+# 4Gamer 記事ビューワ（GameRssReader）
+
+シンプルなデスクトップ向け RSS/記事ビューワです。4Gamer の RSS を取得して一覧表示し、選択した記事を組み込みブラウザまたは外部ブラウザで表示します。
+
+主な機能
+- RSS フィードの取得と一覧表示（複数ジャンルに対応）
+- 記事本文の要約（サニタイズ済みテキスト）表示
+- 組み込みブラウザ表示（`QWebEngineView` を優先）
+- Qt ベースの別アプリケーション（`qt_app.py`）を含む
+
+対応プラットフォーム
+- Windows（開発・動作確認済み）
+
+**要件**
+- Python: 3.8 以上（3.9/3.10/3.11 を推奨）
+- OS: Windows
+- パッケージマネージャ: `pip`
+- 必須パッケージ: `requests`, `beautifulsoup4`
+- オプションパッケージ:
+	- `PySide6` — `qt_app.py`（Qt + QtWebEngine）を実行する場合に必要
+	- `cefpython3` — 埋め込みCEFを利用したい場合（Python のバージョン/アーキテクチャ依存）
+	- `pywebview` — 軽量な組み込みWebViewの代替
+
+**注意**: `main.py` は起動時に `PySide6` の有無をチェックし、無い場合は例外で停止します（自動インストールは行いません）。付属のスクリプト `scripts/setup_windows.ps1` や `scripts/install_pyside_in_current_env.ps1` を使って手動でセットアップしてください。
+
+---
+
+**セットアップ（推奨: PowerShell）**
+
+```powershell
+# 仮想環境作成 + 有効化
+python -m venv .venv
+& .venv\Scripts\Activate.ps1
+
+# pip を最新にして依存をインストール
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# Qt アプリを使う場合 (PySide6 が requirements.txt に含まれています)
+# 既存環境に直接入れたい場合はスクリプトを使う:
+.\scripts\install_pyside_in_current_env.ps1
+```
+
+簡易セットアップスクリプト（Windows）:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.\scripts\setup_windows.ps1
+```
+
+---
+
+**実行方法**
+
+- tkinter ベースのメインアプリ:
+
+```powershell
+python main.py
+```
+
+- Qt ベースのアプリ（QtWebEngine を使用）:
 
 ```powershell
 python qt_app.py
 ```
 
-- 単純に URL を pywebview で開くヘルパー:
-
-（組み込みレンダラは `QWebEngineView` に統一されたため、`open_webview.py` は外部ブラウザ起動などの補助用途にとどめます。）
+---
 
 補足
-- `main.py` は優先的に RSS（既定: `https://www.4gamer.net/rss/pc/pc_news.xml`）を取得して左側リストに反映します。RSS が取得できない場合はサイトのホームページから候補リンクをスクレイピングしてフォールバックします。
-- 組み込みブラウザの動作は環境依存です。`cefpython3` は Python のバージョンとアーキテクチャに合ったビルドが必要で、インストールが難しい場合は `pywebview` を利用してください。
-
-利用上の注意
+- `requirements.txt` には `requests`, `beautifulsoup4`, `PySide6` が記載されています（PySide6 は Qt GUI を使う場合に必要）。
+- `cefpython3` はバイナリと Python のバージョン/アーキテクチャに依存するため、必要な場合は公式ドキュメントに従ってください。
 - ウェブサイトの利用規約・robots.txt を遵守してください。
-- 記事本文は著作権があるため再配布や公開に注意してください。
 
 開発者向けメモ
 - 主要スクリプト:
 	- `main.py`: tkinter ベースのメインアプリ（RSS 取得・組み込み/外部ブラウザ表示）
-	- `qt_app.py`: PySide6（QtWebEngine）を使った別 GUI 実装（ジャンル選択あり）
-	- `open_webview.py`: `pywebview` で渡した URL を表示する簡易ランチャー
+	- `qt_app.py`: PySide6（QtWebEngine）を使った別 GUI 実装
+	- `open_webview.py`: `pywebview` 等を使う簡易ランチャー（補助用途）
 
 アーキテクチャ
 - 本プロジェクトはクリーンアーキテクチャを採用しています。主要層は以下です。
-	- `gamer.domain`: ドメインモデル（`Article` など）
+	- `gamer.domain`: ドメインモデル
 	- `gamer.adapters`: 外部との接続（HTTP、RSS 解析など）
 	- `gamer.presenter`: プレゼンター（UI とユースケースの仲介）
-	- `gamer.ui`: UI 実装（`qt_app.py` が UI に相当）
-
-現在、`qt_app.py` は `gamer.presenter.FeedPresenter` を使って RSS の取得と UI 更新を行います。UI はプレゼンター経由でドメイン/アダプタに依存せず動作します。
+	- `gamer.ui`: UI 実装
 
 ライセンス
-- 商用利用は固く禁じます。
-- 個人利用・教育目的での利用を想定しています。
+- 個人利用・教育目的を想定しています。商用利用はご遠慮ください。
 
 
 
