@@ -336,20 +336,25 @@ class QtApp(QtWidgets.QMainWindow):
             pager_layout.setContentsMargins(6, 4, 6, 4)
             pager_layout.setSpacing(6)
             try:
-                self.prev_btn = QtWidgets.QPushButton('Prev')
+                # use QLabel with links (text-only look) for Prev/Next
+                self.prev_label = QtWidgets.QLabel()
                 self.page_label = QtWidgets.QLabel('Page 1/1')
-                self.next_btn = QtWidgets.QPushButton('Next')
-                self.prev_btn.setFixedWidth(60)
-                self.next_btn.setFixedWidth(60)
+                self.next_label = QtWidgets.QLabel()
+                # right-align pager: add stretch first then widgets
                 pager_layout.addStretch()
-                pager_layout.addWidget(self.prev_btn)
+                pager_layout.addWidget(self.prev_label)
                 pager_layout.addWidget(self.page_label)
-                pager_layout.addWidget(self.next_btn)
-                pager_layout.addStretch()
+                pager_layout.addWidget(self.next_label)
                 list_layout.addWidget(pager)
                 try:
-                    self.prev_btn.clicked.connect(self._on_prev)
-                    self.next_btn.clicked.connect(self._on_next)
+                    # make link-like appearance
+                    for lbl in (self.prev_label, self.next_label):
+                        lbl.setTextFormat(QtCore.Qt.RichText)
+                        lbl.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+                        lbl.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+                        lbl.setStyleSheet('color: #9fb3c8; background: transparent;')
+                    self.prev_label.linkActivated.connect(lambda _: self._on_prev())
+                    self.next_label.linkActivated.connect(lambda _: self._on_next())
                 except Exception:
                     pass
             except Exception:
@@ -643,14 +648,44 @@ class QtApp(QtWidgets.QMainWindow):
         try:
             if total <= 0:
                 try:
-                    self.prev_btn.setEnabled(False)
-                    self.next_btn.setEnabled(False)
+                    try:
+                        # show plain text when disabled
+                        self.prev_label.setText('Prev')
+                        self.next_label.setText('Next')
+                        self.prev_label.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                        self.next_label.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 return
             try:
-                self.prev_btn.setEnabled(self.current_page > 0)
-                self.next_btn.setEnabled(self.current_page + 1 < total_pages)
+                # update prev/next as links when enabled, plain text when disabled
+                if self.current_page > 0:
+                    try:
+                        self.prev_label.setText("<a href='prev'>Prev</a>")
+                        self.prev_label.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.prev_label.setText('Prev')
+                        self.prev_label.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                    except Exception:
+                        pass
+
+                if self.current_page + 1 < total_pages:
+                    try:
+                        self.next_label.setText("<a href='next'>Next</a>")
+                        self.next_label.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self.next_label.setText('Next')
+                        self.next_label.setCursor(QtGui.QCursor(QtCore.Qt.ArrowCursor))
+                    except Exception:
+                        pass
             except Exception:
                 pass
         except Exception:
