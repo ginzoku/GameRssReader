@@ -17,8 +17,8 @@ def _find_local_text(elem, name):
     return ''
 
 
-def fetch_rss(url, headers=None):
-    resp = get(url, headers=headers)
+def fetch_rss(url, headers=None, allow_robots: bool = False):
+    resp = get(url, headers=headers, allow_robots=allow_robots)
     items: List[Dict] = []
     root = ET.fromstring(resp.content)
     for elem in root.iter():
@@ -39,6 +39,6 @@ def fetch_rss(url, headers=None):
 class RssAdapter(RssGateway):
     """Adapter implementing the RssGateway port."""
 
-    def fetch(self, url: str, headers: Optional[Dict] = None):
-        return fetch_rss(url, headers=headers)
+    def fetch(self, url: str, headers: Optional[Dict] = None, allow_robots: bool = False):
+        return fetch_rss(url, headers=headers, allow_robots=allow_robots)
 

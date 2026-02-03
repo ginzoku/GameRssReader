@@ -35,36 +35,67 @@ class FeedPresenter:
         except Exception:
             pass
 
-    def load_feed(self):
-        def _run():
+    def load_feed(self, force: bool = False):
+        def _run(force_local: bool = force):
             try:
                 self._emit_status('RSS を取得中…', 0)
                 if self.rss_gateway:
-                    items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
+                    # allow gateway-based fetch to accept robots override when forced
+                    try:
+                        items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
+                    except TypeError:
+                        # older adapters may not accept allow_robots arg
+                        items = self.rss_gateway.fetch(self.rss_url, headers=self.headers)
                 else:
                     # Special-case: Automaton category/search pages
                     try:
                         if 'automaton-media.com' in (self.rss_url or ''):
                             from ..utils.automaton_url_parser import AutomatonUrlParser
                             # use the post-310463-specific extractor to limit scope
-                            parsed = AutomatonUrlParser.extract_post310463_articles(self.rss_url, headers=self.headers)
-                            items = [
-                                {'title': (p.get('title') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
-                                for p in parsed
-                            ]
+                            try:
+                                parsed = AutomatonUrlParser.extract_post310463_articles(self.rss_url, headers=self.headers, allow_robots=force_local)
+                                items = [
+                                    {'title': (p.get('title') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                                    for p in parsed
+                                ]
+                            except PermissionError:
+                                # robots.txt disallows fetching this page
+                                self._emit_status('robots.txt により取得が拒否されました: ' + self.rss_url, 5000)
+                                items = []
+                                # ask UI to prompt override (UI will call load_feed(force=True) if user accepts)
+                                try:
+                                    if hasattr(self.view, 'prompt_robots_override'):
+                                        self.view.prompt_robots_override(self.rss_url)
+                                except Exception:
+                                    pass
                         elif 'gamespark.jp' in (self.rss_url or '') and '/category/' in (self.rss_url or ''):
                             from ..utils.gamespark_url_parser import GameSparkUrlParser
-                            parsed = GameSparkUrlParser.extract_article_links(self.rss_url, headers=self.headers, include_alt=True)
-                            items = [
-                                {'title': (p.get('alt') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
-                                for p in parsed
-                            ]
+                            try:
+                                parsed = GameSparkUrlParser.extract_article_links(self.rss_url, headers=self.headers, include_alt=True, allow_robots=force_local)
+                                items = [
+                                    {'title': (p.get('alt') or '').strip() or p.get('url'), 'link': p.get('url'), 'pubDate': '', 'description': ''}
+                                    for p in parsed
+                                ]
+                            except PermissionError:
+                                self._emit_status('robots.txt により取得が拒否されました: ' + self.rss_url, 5000)
+                                items = []
+                                try:
+                                    if hasattr(self.view, 'prompt_robots_override'):
+                                        self.view.prompt_robots_override(self.rss_url)
+                                except Exception:
+                                    pass
                         else:
                             from ..adapters.rss_adapter import fetch_rss
-                            items = fetch_rss(self.rss_url, headers=self.headers)
+                            try:
+                                items = fetch_rss(self.rss_url, headers=self.headers, allow_robots=force_local)
+                            except TypeError:
+                                items = fetch_rss(self.rss_url, headers=self.headers)
                     except Exception:
                         from ..adapters.rss_adapter import fetch_rss
-                        items = fetch_rss(self.rss_url, headers=self.headers)
+                        try:
+                            items = fetch_rss(self.rss_url, headers=self.headers, allow_robots=force_local)
+                        except TypeError:
+                            items = fetch_rss(self.rss_url, headers=self.headers)
                 self._emit_list(items)
                 self._emit_status('RSS を取得しました', 3000)
             except Exception as e:

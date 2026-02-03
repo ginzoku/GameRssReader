@@ -1,7 +1,3 @@
-import requests
+from .http_control import get
 
-
-def get(url, headers=None, timeout=10):
-    resp = requests.get(url, headers=headers, timeout=timeout)
-    resp.raise_for_status()
-    return resp
+# Proxy to http_control.get to centralize robots and rate limiting

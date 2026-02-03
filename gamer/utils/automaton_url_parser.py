@@ -4,7 +4,7 @@
 リンクを抽出するための実験的ユーティリティを提供します。
 """
 
-import requests
+from ..adapters.network_requests import get
 from bs4 import BeautifulSoup
 from typing import List, Dict
 from urllib.parse import urljoin
@@ -20,11 +20,10 @@ class AutomatonUrlParser:
     """
 
     @classmethod
-    def extract_dynamic_media_links(cls, page_url: str, headers: dict = None) -> List[Dict]:
+    def extract_dynamic_media_links(cls, page_url: str, headers: dict = None, allow_robots: bool = False) -> List[Dict]:
         # kept for backward-compat; prefer using extract_post310463_articles for the new spec
         h = headers or {"User-Agent": "GameRssReader/1.0"}
-        resp = requests.get(page_url, headers=h, timeout=10)
-        resp.raise_for_status()
+        resp = get(page_url, headers=h, timeout=10, allow_robots=allow_robots)
         soup = BeautifulSoup(resp.content, 'html.parser')
         out: List[Dict] = []
         for a in soup.find_all('a', href=True):
@@ -40,7 +39,7 @@ class AutomatonUrlParser:
         return out
 
     @classmethod
-    def extract_post310463_articles(cls, page_url: str, headers: dict = None) -> List[Dict]:
+    def extract_post310463_articles(cls, page_url: str, headers: dict = None, allow_robots: bool = False) -> List[Dict]:
         """新仕様:
 
         - ページ内の `article` 要素のうちクラスに `post-310463` を含む要素を探す
@@ -49,8 +48,7 @@ class AutomatonUrlParser:
           `href` を `url`、アンカー内のテキストを `title` として返す
         """
         h = headers or {"User-Agent": "GameRssReader/1.0"}
-        resp = requests.get(page_url, headers=h, timeout=10)
-        resp.raise_for_status()
+        resp = get(page_url, headers=h, timeout=10, allow_robots=allow_robots)
         soup = BeautifulSoup(resp.content, 'html.parser')
         results: List[Dict] = []
 

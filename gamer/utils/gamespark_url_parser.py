@@ -8,7 +8,7 @@ import re
 from typing import List
 from urllib.parse import urljoin, urlparse
 
-import requests
+from ..adapters.network_requests import get
 from bs4 import BeautifulSoup
 
 
@@ -22,10 +22,9 @@ class GameSparkUrlParser:
     _pattern = re.compile(r'^/article/\d{4}/\d{2}/\d{2}/\d{6}\.html$')
 
     @classmethod
-    def extract_article_links(cls, page_url: str, headers: dict = None, include_alt: bool = False):
+    def extract_article_links(cls, page_url: str, headers: dict = None, include_alt: bool = False, allow_robots: bool = False):
         h = headers or {"User-Agent": "GameRssReader/1.0"}
-        resp = requests.get(page_url, headers=h, timeout=10)
-        resp.raise_for_status()
+        resp = get(page_url, headers=h, timeout=10, allow_robots=allow_robots)
         soup = BeautifulSoup(resp.content, 'html.parser')
         # Prefer structured news list: find div.news-list and extract
         seen = {}

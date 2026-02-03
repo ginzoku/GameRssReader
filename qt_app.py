@@ -443,6 +443,11 @@ class QtApp(QtWidgets.QMainWindow):
             try:
                 # connect internal signal to status bar
                 self.status_message.connect(lambda msg, t=0: self._status_bar.showMessage(msg, t))
+                # also connect to handler to detect robots block messages and prompt override
+                try:
+                    self.status_message.connect(self._on_status_message)
+                except Exception:
+                    pass
             except Exception:
                 pass
         except Exception:
@@ -765,6 +770,29 @@ class QtApp(QtWidgets.QMainWindow):
                 self.status_message.emit('ジャンル: PC に切替え (既定)', 2000)
             self.presenter.rss_url = self.rss_url
             self.presenter.load_feed()
+        except Exception:
+            pass
+
+    def _on_status_message(self, msg: str, timeout: int = 0):
+        try:
+            if not msg:
+                return
+            key = 'robots.txt により取得が拒否されました:'
+            if msg.startswith(key):
+                url = msg[len(key):].strip()
+                try:
+                    from PySide6.QtWidgets import QMessageBox
+                    ret = QMessageBox.question(self, 'robots.txt によるブロック',
+                                               f'robots.txt により次のページの取得が拒否されました:\n{url}\n\n取得を強制しますか？\n(サイトの利用規約に違反していないか確認してください)',
+                                               QMessageBox.Yes | QMessageBox.No,
+                                               QMessageBox.No)
+                    if ret == QMessageBox.Yes:
+                        try:
+                            self.presenter.load_feed(force=True)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
         except Exception:
             pass
 
